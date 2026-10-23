@@ -18,12 +18,12 @@ const pool = new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map(x=>x.trim()).filter(Boolean);
 function equal(a,b){const x=Buffer.from(String(a)),y=Buffer.from(String(b));return x.length===y.length&&crypto.timingSafeEqual(x,y)}
 function item(r){return{id:r.id,name:r.name,type:r.type,fabric:r.fabric,color:r.color,occasion:r.occasion,price:Number(r.price),img:r.img,tag:r.tag,quality:r.quality,details:r.details,stock:r.stock}}
-function admin(req,res,next){try{req.owner=jwt.verify((req.headers.authorization||'').replace(/^Bearer\\s+/i,''),secret,{issuer:'rama-sarees-api'});next()}catch{res.status(401).json({error:'Please sign in to the owner studio again.'})}}
+function admin(req,res,next){try{const token=String(req.headers.authorization||'').split(' ')[1]||'';req.owner=jwt.verify(token,secret,{issuer:'rama-sarees-api'});next()}catch{res.status(401).json({error:'Please sign in to the owner studio again.'})}}
 function validate(input={}){const keys=['name','type','fabric','color','occasion','img','tag','quality','details'];const p=Object.fromEntries(keys.map(k=>[k,String(input[k]||'').trim()]));p.price=Number(input.price);p.stock=input.stock!==false&&input.stock!=='false';if(!p.name||p.name.length>120)return{error:'Enter a product name under 120 characters.'};if(!['Saree','Dress'].includes(p.type))return{error:'Choose Saree or Dress.'};if(!Number.isSafeInteger(p.price)||p.price<1||p.price>10000000)return{error:'Enter a valid price.'};try{if(new URL(p.img).protocol!=='https:')return{error:'Photo links must use HTTPS.'}}catch{return{error:'Add a valid product photo URL.'}}return{product:p}}
 
 app.disable('x-powered-by');
 app.use(helmet());
-app.use(cors({origin(origin,cb){if(!origin)return cb(null,true);const local=/^http:\\/\\/(localhost|127\\.0\\.0\\.1)(:\\d+)?$/.test(origin);const vercel=/^https:\\/\\/[a-z0-9-]+(?:-[a-z0-9-]+)*\\.vercel\\.app$/i.test(origin);const explicit=allowedOrigins.includes(origin);const ok=local||vercel||explicit;cb(ok?null:new Error('Origin not allowed'),ok)}}));
+app.use(cors({origin(origin,cb){if(!origin)return cb(null,true);const parsed=new URL(origin);const local=parsed.protocol==='http:'&&['localhost','127.0.0.1'].includes(parsed.hostname);const vercel=parsed.protocol==='https:'&&parsed.hostname.endsWith('.vercel.app');const explicit=allowedOrigins.includes(origin);const ok=local||vercel||explicit;cb(ok?null:new Error('Origin not allowed'),ok)}}));
 app.use(express.json({limit:'64kb'}));
 app.get('/api/health',(_req,res)=>res.json({ok:true,service:'rama-sarees-api'}));
 app.get('/api/products',async(_req,res,next)=>{try{const{rows}=await pool.query('SELECT * FROM products ORDER BY created_at DESC,id ASC');res.json(rows.map(item))}catch(e){next(e)}});
